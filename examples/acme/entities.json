@@ -1,0 +1,16 @@
+{
+  "acme": {
+    "id": "acme",
+    "display_name": "Acme",
+    "aliases": ["Acme Inc."],
+    "domains": ["acme.example"],
+    "source_urls": ["https://example.com/acme/news"]
+  },
+  "competitor-a": {
+    "id": "competitor-a",
+    "display_name": "Competitor A",
+    "aliases": ["Competitor A"],
+    "domains": ["competitor-a.example"],
+    "source_urls": ["https://example.com/competitor-a/news"]
+  }
+}

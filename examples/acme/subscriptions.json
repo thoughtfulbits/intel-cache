@@ -1,0 +1,7 @@
+{
+  "acme-desk": {
+    "desk_id": "acme-desk",
+    "entity_ids": ["acme", "competitor-a"],
+    "lanes": ["people", "product", "ma", "marketing", "customer", "roadmap"]
+  }
+}
