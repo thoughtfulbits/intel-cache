@@ -12,6 +12,7 @@ from .deltas import ack_deltas, list_deltas, list_unacked_deltas
 from .diff import diff_blobs
 from .entity import list_entities, upsert_entity
 from .fetch import fetch_entity, fetch_source
+from .migration import migrate_v1_to_v2
 from .models import LANES
 from .normalize import HASH_MODES
 from .seed import seed_directory
@@ -238,6 +239,11 @@ def _cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_migrate(args: argparse.Namespace) -> int:
+    _print_json(migrate_v1_to_v2(store=_store(args)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="intel-cache",
@@ -329,6 +335,9 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status", help="Print cache counts and latest timestamps.")
     status_parser.set_defaults(func=_cmd_status)
 
+    migrate_parser = subparsers.add_parser("migrate", help="Migrate a v0.1 cache layout to v0.2.")
+    migrate_parser.set_defaults(func=_cmd_migrate)
+
     return parser
 
 
@@ -340,7 +349,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return handler(args)
     except Exception as exc:
         print(f"intel-cache: error: {exc}", file=sys.stderr)
-        return 1
+        return 2
 
 
 if __name__ == "__main__":

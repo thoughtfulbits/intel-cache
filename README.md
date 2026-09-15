@@ -145,6 +145,31 @@ Inspect cache health without an AI summary pass:
 intel-cache status
 ```
 
+Migrate an existing v0.1 cache before using v0.2+ commands:
+
+```bash
+# Optional belt-and-suspenders backup for live fleet caches:
+cp -a "$INTEL_CACHE_DIR" "$INTEL_CACHE_DIR.backup-before-intel-cache-0.2"
+
+intel-cache migrate
+intel-cache status
+```
+
+`migrate` converts the legacy v0.1 layout into the v0.2 layout:
+
+- `entities.json` from `{"entities": [...]}` to an entity-id map.
+- `desks/{desk}.json` into `subscriptions.json`.
+- `blobs/{entity}/{url_id}/{sha}.md` into flat `blobs/{sha}` files, while
+  leaving the original nested blobs in place.
+- `meta/{entity}/{url_id}.json` into `sources/{entity}/{url_id}.json`.
+- `deltas/{date}/*.json` into append-only `deltas.jsonl`.
+- Creates `watermarks.json` when missing.
+
+The command also writes a metadata backup under
+`migration-backups/v0.1-<timestamp>/` before modifying legacy JSON files. Blob
+directories can be large, so blobs are preserved in place rather than copied
+into that metadata backup.
+
 Produce a deterministic unified diff between the latest two cached versions of
 an entity source:
 

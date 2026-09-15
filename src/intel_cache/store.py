@@ -55,10 +55,20 @@ class CacheStore:
 
     def list_entities(self) -> list[Entity]:
         data = self._read_json(self.entities_path, {})
-        return [Entity.from_dict(value) for value in sorted(data.values(), key=lambda item: item["id"])]
+        if isinstance(data, dict) and "entities" in data:
+            values = data.get("entities", [])
+        elif isinstance(data, list):
+            values = data
+        else:
+            values = data.values()
+        return [Entity.from_dict(value) for value in sorted(values, key=lambda item: item["id"])]
 
     def get_entity(self, entity_id: str) -> Entity | None:
         data = self._read_json(self.entities_path, {})
+        if isinstance(data, dict) and "entities" in data:
+            data = {value["id"]: value for value in data["entities"]}
+        elif isinstance(data, list):
+            data = {value["id"]: value for value in data}
         entity = data.get(normalize_id(entity_id))
         return Entity.from_dict(entity) if entity else None
 
@@ -76,6 +86,13 @@ class CacheStore:
 
     def list_subscriptions(self) -> list[DeskSubscription]:
         data = self._read_json(self.subscriptions_path, {})
+        if isinstance(data, list):
+            return [DeskSubscription.from_dict(value) for value in data]
+        if not data and (self.root / "desks").is_dir():
+            return [
+                DeskSubscription.from_dict(self._read_json(path, {}))
+                for path in sorted((self.root / "desks").glob("*.json"))
+            ]
         return [
             DeskSubscription.from_dict(value)
             for value in sorted(data.values(), key=lambda item: item["desk_id"])
@@ -83,6 +100,10 @@ class CacheStore:
 
     def get_subscription(self, desk_id: str) -> DeskSubscription | None:
         data = self._read_json(self.subscriptions_path, {})
+        if not data:
+            legacy_path = self.root / "desks" / f"{normalize_id(desk_id)}.json"
+            if legacy_path.exists():
+                return DeskSubscription.from_dict(self._read_json(legacy_path, {}))
         subscription = data.get(normalize_id(desk_id))
         return DeskSubscription.from_dict(subscription) if subscription else None
 
@@ -254,7 +275,10 @@ class CacheStore:
         items: list[dict[str, Any]] = []
         for path in self.sources_dir.glob("*/*.json"):
             try:
-                items.append(self._read_json(path, {}))
+                item = self._read_json(path, {})
             except json.JSONDecodeError:
                 continue
+            item.setdefault("entity_id", path.parent.name)
+            item.setdefault("source_key", path.stem)
+            items.append(item)
         return items
