@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -8,6 +7,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .models import Delta, DeskSubscription, Entity, FetchResult, normalize_id, utc_now_iso
+from .normalize import canonical_source_url, sha256_content
 
 
 def default_cache_dir() -> Path:
@@ -20,7 +20,7 @@ def default_cache_dir() -> Path:
 
 
 def source_key(url: str) -> str:
-    return hashlib.sha256(url.encode("utf-8")).hexdigest()[:24]
+    return sha256_content(canonical_source_url(url).encode("utf-8"))[:24]
 
 
 class CacheStore:
@@ -31,6 +31,7 @@ class CacheStore:
         self.blobs_dir = self.root / "blobs"
         self.sources_dir = self.root / "sources"
         self.deltas_path = self.root / "deltas.jsonl"
+        self.watermarks_path = self.root / "watermarks.json"
         self._ensure_dirs()
 
     def _ensure_dirs(self) -> None:
@@ -93,10 +94,17 @@ class CacheStore:
         self._write_json(self.subscriptions_path, data)
         return subscription
 
-    def store_source_blob(self, entity_id: str, url: str, content: bytes) -> FetchResult:
+    def store_source_blob(
+        self,
+        entity_id: str,
+        url: str,
+        content: bytes,
+        *,
+        hash_mode: str = "raw",
+    ) -> FetchResult:
         entity_id = normalize_id(entity_id)
         self.require_entity(entity_id)
-        digest = hashlib.sha256(content).hexdigest()
+        digest = sha256_content(content, mode=hash_mode)
         blob_path = self.blobs_dir / digest
         if not blob_path.exists():
             blob_path.write_bytes(content)
@@ -117,6 +125,7 @@ class CacheStore:
             previous_sha256=previous_sha,
             fetched_at=fetched_at,
             size=len(content),
+            hash_mode=hash_mode,
         )
         self._write_json(meta_path, result.to_dict())
         if changed:
@@ -130,6 +139,7 @@ class CacheStore:
                     changed_at=fetched_at,
                     blob_path=str(blob_path),
                     size=len(content),
+                    hash_mode=hash_mode,
                 )
             )
         return result
@@ -167,6 +177,44 @@ class CacheStore:
                 deltas.append(delta)
         return deltas
 
+    def get_delta_watermark(self, *, desk_id: str, lane: str) -> str | None:
+        data = self._read_json(self.watermarks_path, {})
+        value = data.get(self._watermark_key(desk_id=desk_id, lane=lane))
+        if not value:
+            return None
+        return str(value.get("last_seen_changed_at") or "")
+
+    def set_delta_watermark(self, *, desk_id: str, lane: str, changed_at: str) -> None:
+        data = self._read_json(self.watermarks_path, {})
+        key = self._watermark_key(desk_id=desk_id, lane=lane)
+        data[key] = {
+            "desk_id": normalize_id(desk_id),
+            "lane": lane.strip().lower(),
+            "last_seen_changed_at": changed_at,
+            "updated_at": utc_now_iso(),
+        }
+        self._write_json(self.watermarks_path, data)
+
+    def status(self) -> dict[str, Any]:
+        source_meta = self._source_metadata()
+        deltas = self.list_deltas()
+        watermarks = self._read_json(self.watermarks_path, {})
+        return {
+            "entities": len(self.list_entities()),
+            "subscriptions": len(self.list_subscriptions()),
+            "sources": len(source_meta),
+            "blobs": sum(1 for path in self.blobs_dir.iterdir() if path.is_file())
+            if self.blobs_dir.exists()
+            else 0,
+            "deltas": len(deltas),
+            "watermarks": len(watermarks),
+            "last_fetched_at": max(
+                (str(item.get("fetched_at", "")) for item in source_meta),
+                default=None,
+            ),
+            "last_changed_at": max((delta.changed_at for delta in deltas), default=None),
+        }
+
     def _entity_filter_for(
         self,
         *,
@@ -196,3 +244,17 @@ class CacheStore:
 
     def load_entities(self, entities: Iterable[Entity]) -> list[Entity]:
         return [self.upsert_entity(entity) for entity in entities]
+
+    def _watermark_key(self, *, desk_id: str, lane: str) -> str:
+        return f"{normalize_id(desk_id)}:{lane.strip().lower()}"
+
+    def _source_metadata(self) -> list[dict[str, Any]]:
+        if not self.sources_dir.exists():
+            return []
+        items: list[dict[str, Any]] = []
+        for path in self.sources_dir.glob("*/*.json"):
+            try:
+                items.append(self._read_json(path, {}))
+            except json.JSONDecodeError:
+                continue
+        return items

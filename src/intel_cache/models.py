@@ -109,6 +109,7 @@ class FetchResult:
     previous_sha256: str | None
     fetched_at: str
     size: int
+    hash_mode: str = "raw"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -121,6 +122,26 @@ class FetchResult:
             "previous_sha256": self.previous_sha256,
             "fetched_at": self.fetched_at,
             "size": self.size,
+            "hash_mode": self.hash_mode,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class FetchFailure:
+    entity_id: str
+    url: str
+    source_key: str
+    error: str
+    fetched_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "entity_id": self.entity_id,
+            "url": self.url,
+            "source_key": self.source_key,
+            "error": self.error,
+            "fetched_at": self.fetched_at,
+            "failed": True,
         }
 
 
@@ -134,6 +155,7 @@ class Delta:
     changed_at: str
     blob_path: str
     size: int
+    hash_mode: str = "raw"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -145,6 +167,7 @@ class Delta:
             "changed_at": self.changed_at,
             "blob_path": self.blob_path,
             "size": self.size,
+            "hash_mode": self.hash_mode,
         }
 
     @classmethod
@@ -158,4 +181,5 @@ class Delta:
             changed_at=data["changed_at"],
             blob_path=data["blob_path"],
             size=int(data["size"]),
+            hash_mode=data.get("hash_mode", "raw"),
         )
